@@ -14,21 +14,32 @@
         try { Lampa.Noty.show(text); } catch (e) { console.log('[magnet-open]', text); }
     }
 
+    function isInfoHash(h) {
+        return typeof h === 'string' && (/^[a-f0-9]{40}$/i.test(h) || /^[a-z2-7]{32}$/i.test(h));
+    }
+
     // Достаём magnet или ссылку на .torrent из объекта раздачи
     function getLink(item) {
         if (!item) return '';
+
         var magnet = item.MagnetUri || item.magnet || item.Magnet || '';
-        if (magnet) return magnet;
+        if (/^magnet:/i.test(magnet)) return magnet;
 
         var link = item.Link || item.link || item.url || '';
         if (/^magnet:/i.test(link)) return link;
 
-        var hash = item.hash || item.InfoHash || item.infohash || item.Hash;
-        if (hash) {
+        // В ссылке может быть зашит btih
+        var m = link.match(/btih[:=]([a-z0-9]{32,40})/i);
+        if (m && isInfoHash(m[1])) return 'magnet:?xt=urn:btih:' + m[1];
+
+        // Настоящий infohash (не путать с внутренним hash Лампы от названия)
+        var hash = item.InfoHash || item.infohash || item.info_hash;
+        if (isInfoHash(hash)) {
             var title = item.Title || item.title || '';
             return 'magnet:?xt=urn:btih:' + hash + (title ? '&dn=' + encodeURIComponent(title) : '');
         }
-        return link; // прямая ссылка на .torrent
+
+        return link; // прямая ссылка на .torrent-файл
     }
 
     function copy(text) {
@@ -55,10 +66,10 @@
         if (!link) return notify('У раздачи нет ссылки');
 
         // 1) Android-приложение Lampa: передаёт ссылку системе через intent
+        //    (так же делает сама Лампа для magnet и .torrent-ссылок)
         try {
-            if (Lampa.Platform && Lampa.Platform.is('android') &&
-                Lampa.Android && typeof Lampa.Android.openTorrentLink === 'function') {
-                Lampa.Android.openTorrentLink(link, JSON.stringify({}));
+            if (window.AndroidJS && typeof window.AndroidJS.openTorrentLink === 'function') {
+                window.AndroidJS.openTorrentLink(link, JSON.stringify({}));
                 return;
             }
         } catch (e) {}
@@ -85,7 +96,7 @@
             onSelect: function () { openExternal(link); }
         });
         e.menu.push({
-            title: 'Копировать magnet-ссылку',
+            title: 'Копировать ссылку на торрент',
             magnet_copy: true,
             onSelect: function () { link ? copy(link) : notify('У раздачи нет ссылки'); }
         });
